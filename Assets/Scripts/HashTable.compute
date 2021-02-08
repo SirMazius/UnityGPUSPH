@@ -1,0 +1,93 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel ClearTable
+#pragma kernel ClearNeighboursList
+
+Buffer<float3> particlesPosition;
+
+RWBuffer<int> particlesInBucketCounter; // Array que indicia cuantas particulas hay en cada bucket.
+RWBuffer<int> neighbourParticlesCounter; // Array que indicia cuantas particulas vecinas tiene una dada.
+/*
+    En hashTableStorage se almacenan los indices de las particulas tiene tantos buckets como el doble de particulas
+    que se esten utilizando, cada bucket tiene un espacio para un determinado numero maximo de particulas.
+*/
+RWBuffer<int> hashTableStorage;
+RWBuffer<int> particleNeighbours;
+
+int nBuckets; // Numero total de buckets en la tabla sin contar el espacio de cada bucket.
+int bucketSize; // Numero de particulas que puede contener cada bucket como maximo.
+int nParticles; // Numero de particulas en la simulacion.
+float cellSize; // El tamanyo en el espacio 3D que ocupa cada celda x*y*z.
+
+/*
+    Discretiza la posicion de una particula en base al tamanyo de la celda.
+*/
+float3 DiscretizePosition(float3 particlePosition)
+{
+    return floor(particlePosition.xyz / cellSize);
+}
+
+/*
+    Genera el ID de la celda que nos corresponde en funcion de nuestra posicion.
+*/
+int Hash(float3 particlePosition)
+{
+    return (((int) particlePosition.x) * 73856093) ^ (((int) particlePosition.y) * 19349663) ^ (((int) particlePosition.z) * 83492791) % nBuckets;
+}
+
+/*
+    Limpiamos la tabla de los valores en la iteracion anterior, se genera un hilo por bucket
+    cada hilo limpia todo el espacio de ese bucket en nuestro caso 40 celdas.
+*/
+[numthreads(64, 1, 1)]
+void ClearTable(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x < nBuckets)
+    {
+        int bucketIndex = id.x * bucketSize;
+        int nParticles = particlesInBucketCounter[id.x];
+        
+        for (int i = 0; i < nParticles; i++)
+        {
+            hashTableStorage[bucketIndex + i] = 0;
+        }
+        particlesInBucketCounter[id.x] = 0;
+    }
+    
+}
+
+/*
+    Generamos un hilo por particula encargado de limpiar sus vecinos.
+*/
+[numthreads(64, 1, 1)]
+void ClearNeighboursList(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x < nParticles)
+    {
+        int particleIndex = id.x * bucketSize;
+        int nNeighbourParticles = neighbourParticlesCounter[id.x];
+        for (int i = 0; i < nNeighbourParticles; i++)
+        {
+            particleNeighbours[particleIndex + i];
+        }
+        neighbourParticlesCounter[id.x] = 0;
+    }
+}
+
+/*
+    Inserta una particula dada en la tabla hash.
+*/
+[numthreads(64, 1, 1)]
+void InsertParticles(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x < nParticles)
+    {
+        int hashIndex = Hash(particlesPosition[id.x]); // Indice del bucket.
+        int cellIndex; // Indice de la celda dentro del bucket.
+        InterlockedAdd(particlesInBucketCounter[id.x], 1, cellIndex); // Marcamos la particula como anyadida.
+        hashTableStorage[hashIndex * bucketSize + cellIndex] = id.x;
+    }
+
+}
+
+
+

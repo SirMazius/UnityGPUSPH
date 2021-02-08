@@ -1,0 +1,15 @@
+﻿
+#pragma kernel CSThird
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+
+RWStructuredBuffer<float> floatsData;
+
+
+
+[numthreads(64, 1, 1)]
+void CSThird (uint3 id : SV_DispatchThreadID)
+{
+	floatsData[id.x] = floatsData[id.x % 64] * 30;
+}
